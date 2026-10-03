@@ -202,6 +202,7 @@ function App() {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [token, setToken] = useState<string>(() => localStorage.getItem('bestoption-token') ?? '');
   const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '', fullName: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [tradeForm, setTradeForm] = useState({ symbol: 'AAPL', side: 'buy' as Side, quantity: 10, price: 214.8 });
   const [watchForm, setWatchForm] = useState({ symbol: 'BTCUSD', market: 'Crypto' });
   const [txForm, setTxForm] = useState({ type: 'deposit' as TransactionType, amount: 500 });
@@ -461,20 +462,31 @@ function App() {
 
             <label>
               Password
-              <input
-                type="password"
-                value={authForm.password}
-                onChange={(event) => setAuthForm((value) => ({ ...value, password: event.target.value }))}
-                placeholder="••••••••"
-                required
-              />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={authForm.password}
+                  onChange={(event) => setAuthForm((value) => ({ ...value, password: event.target.value }))}
+                  placeholder="••••••••"
+                  required
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </label>
 
             {authMode === 'signup' && (
               <label>
                 Confirm password
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={authForm.confirmPassword}
                   onChange={(event) =>
                     setAuthForm((value) => ({ ...value, confirmPassword: event.target.value }))
