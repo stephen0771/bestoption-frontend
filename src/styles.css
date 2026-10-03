@@ -399,6 +399,63 @@ input, select {
   gap: 10px;
 }
 
+.chart-section {
+  padding: 16px 18px 18px;
+}
+
+.chart-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px;
+}
+
+.chart-header strong {
+  display: block;
+  font-size: 1.1rem;
+}
+
+.chart-header span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.chart-toggle-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chart-toggle {
+  border: 1px solid rgba(217, 174, 93, 0.24);
+  background: rgba(217, 174, 93, 0.04);
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.chart-toggle.active {
+  background: rgba(217, 174, 93, 0.18);
+  color: var(--text);
+  border-color: rgba(217, 174, 93, 0.42);
+}
+
+.chart-box {
+  width: 100%;
+  min-height: 360px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
 @media (max-width: 980px) {
   .auth-card,
   .app-shell,

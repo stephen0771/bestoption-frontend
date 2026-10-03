@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { createChart, type Time } from 'lightweight-charts';
 
 type Tab = 'overview' | 'trades' | 'watchlist' | 'transactions';
 type Side = 'buy' | 'sell';
@@ -76,11 +77,131 @@ function formatPct(value: number) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 }
 
+const INTERVALS = ['1m', '5m', '15m', '1h'];
+
+function PriceChart({ symbol = 'BTCUSDT' }: { symbol?: string }) {
+  const box = useRef<HTMLDivElement | null>(null);
+  const [interval, setIntervalValue] = useState('1m');
+  const [status, setStatus] = useState('Loading...');
+
+  useEffect(() => {
+    const container = box.current;
+    if (!container) {
+      return;
+    }
+
+    const chart = createChart(container, {
+      height: 360,
+      layout: { background: { color: 'transparent' }, textColor: '#d8c9a8' },
+      grid: { vertLines: { color: '#2a2418' }, horzLines: { color: '#2a2418' } },
+      timeScale: { timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: '#4f4130' },
+      crosshair: { horzLine: { color: '#d9ae5d' }, vertLine: { color: '#d9ae5d' } },
+    });
+
+    const series = chart.addCandlestickSeries({
+      upColor: '#8ad6a1',
+      downColor: '#f39c9c',
+      wickUpColor: '#8ad6a1',
+      wickDownColor: '#f39c9c',
+      borderVisible: false,
+      priceLineVisible: false,
+    });
+
+    let ws: WebSocket | null = null;
+    let cancelled = false;
+
+    async function start() {
+      try {
+        const response = await fetch(
+          `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=300`,
+        );
+
+        if (!response.ok) {
+          throw new Error('Request failed');
+        }
+
+        const rows = await response.json();
+        if (cancelled) {
+          return;
+        }
+
+        series.setData(
+          rows.map((k: [number, string, string, string, string, string, number, number, number, number, number, number]) => ({
+            time: (Math.floor(k[0] / 1000) as Time),
+            open: Number(k[1]),
+            high: Number(k[2]),
+            low: Number(k[3]),
+            close: Number(k[4]),
+          })),
+        );
+        chart.timeScale().fitContent();
+        setStatus('Live');
+
+        ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${interval}`);
+        ws.onmessage = (event) => {
+          const payload = JSON.parse(event.data).k;
+          series.update({
+            time: (Math.floor(payload.t / 1000) as Time),
+            open: Number(payload.o),
+            high: Number(payload.h),
+            low: Number(payload.l),
+            close: Number(payload.c),
+          });
+        };
+        ws.onclose = () => !cancelled && setStatus('Disconnected');
+        ws.onerror = () => !cancelled && setStatus('Disconnected');
+      } catch {
+        if (!cancelled) {
+          setStatus('Could not load prices');
+        }
+      }
+    }
+
+    void start();
+
+    const onResize = () => chart.applyOptions({ width: container.clientWidth });
+    window.addEventListener('resize', onResize);
+    onResize();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('resize', onResize);
+      ws?.close();
+      chart.remove();
+    };
+  }, [interval, symbol]);
+
+  return (
+    <div className="chart-panel">
+      <div className="chart-header">
+        <div>
+          <strong>{symbol}</strong>
+          <span>{status}</span>
+        </div>
+        <div className="chart-toggle-group" aria-label="Candle interval controls">
+          {INTERVALS.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setIntervalValue(item)}
+              className={item === interval ? 'chart-toggle active' : 'chart-toggle'}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div ref={box} className="chart-box" />
+    </div>
+  );
+}
+
 function App() {
   const [tab, setTab] = useState<Tab>('overview');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [token, setToken] = useState<string>(() => localStorage.getItem('bestoption-token') ?? '');
-  const [authForm, setAuthForm] = useState({ email: '', password: '', fullName: '' });
+  const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '', fullName: '' });
   const [tradeForm, setTradeForm] = useState({ symbol: 'AAPL', side: 'buy' as Side, quantity: 10, price: 214.8 });
   const [watchForm, setWatchForm] = useState({ symbol: 'BTCUSD', market: 'Crypto' });
   const [txForm, setTxForm] = useState({ type: 'deposit' as TransactionType, amount: 500 });
@@ -166,13 +287,27 @@ function App() {
     setLoading(true);
     setError('');
 
+    if (authMode === 'signup' && authForm.password !== authForm.confirmPassword) {
+      setError('Passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const endpoint = authMode === 'login' ? '/auth/login' : '/auth/signup';
-      const payload = {
-        email: authForm.email,
-        password: authForm.password,
-        full_name: authForm.fullName,
-      };
+      const payload =
+        authMode === 'signup'
+          ? {
+              full_name: authForm.fullName,
+              email: authForm.email,
+              password: authForm.password,
+              confirm_password: authForm.confirmPassword,
+            }
+          : {
+              email: authForm.email,
+              password: authForm.password,
+            };
+
       const result = await apiRequest<{ token: string; user: User }>(endpoint, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -180,7 +315,7 @@ function App() {
 
       localStorage.setItem('bestoption-token', result.token);
       setToken(result.token);
-      setAuthForm({ email: '', password: '', fullName: '' });
+      setAuthForm({ email: '', password: '', confirmPassword: '', fullName: '' });
       setTab('overview');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
@@ -335,6 +470,21 @@ function App() {
               />
             </label>
 
+            {authMode === 'signup' && (
+              <label>
+                Confirm password
+                <input
+                  type="password"
+                  value={authForm.confirmPassword}
+                  onChange={(event) =>
+                    setAuthForm((value) => ({ ...value, confirmPassword: event.target.value }))
+                  }
+                  placeholder="Repeat password"
+                  required
+                />
+              </label>
+            )}
+
             {error && <div className="error-banner">{error}</div>}
 
             <button type="submit" className="primary-button" disabled={loading}>
@@ -411,6 +561,10 @@ function App() {
                 <span>Realized P&amp;L</span>
                 <strong className={summary.realizedPnl >= 0 ? 'positive' : 'negative'}>{formatMoney(summary.realizedPnl)}</strong>
               </div>
+            </div>
+
+            <div className="panel chart-section">
+              <PriceChart symbol="BTCUSDT" />
             </div>
 
             <div className="panel-grid">
